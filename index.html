@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Techture Organization Chart</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="page-header">
+        <div class="header-left">
+            <img src="techture-logo.png" class="techture-logo" alt="Techture">
+            <div class="header-title">
+                <h1>Organization Chart</h1>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <div class="search-wrapper">
+                <input type="search" id="employee-search" class="search-input" placeholder="Search employee..." autocomplete="off">
+                <button id="clear-search" class="clear-search" type="button" aria-label="Clear search">×</button>
+                <div id="search-results" class="search-results hidden">
+                    <div class="search-filters">
+                        <select id="department-filter" class="filter-select" aria-label="Filter by department">
+                            <option value="">All Departments</option>
+                        </select>
+                        <select id="location-filter" class="filter-select" aria-label="Filter by location">
+                            <option value="">All Locations</option>
+                        </select>
+                    </div>
+                    <div id="search-results-list"></div>
+                </div>
+            </div>
+
+            <label for="excel-file" class="toolbar-button">Load File</label>
+            <input type="file" id="excel-file" accept=".xlsx,.csv" hidden>
+
+            <button id="layout-toggle-button" class="toolbar-button" type="button" aria-pressed="false" title="Switch chart orientation">
+                <span class="layout-icon" aria-hidden="true"></span>
+                <span id="layout-toggle-label">Horizontal Layout</span>
+            </button>
+            <button id="edit-mode-button" class="toolbar-button" type="button" aria-pressed="false" title="Drag employees onto a new manager to reassign them">
+                <span class="reorder-icon" aria-hidden="true"></span>
+                <span id="edit-mode-label">Reorder Mode</span>
+            </button>
+            <button id="add-placeholder-button" class="toolbar-button" type="button" title="Add a placeholder 'To Hire' node">+ To Hire</button>
+            <button id="export-csv-button" class="toolbar-button" type="button">Export CSV</button>
+            <button id="expand-collapse-button" class="toolbar-button" type="button">Expand All</button>
+            <button id="fit-button" class="toolbar-button" type="button">Fit to Screen</button>
+        </div>
+    </header>
+
+    <main id="main-content">
+        <div id="chart-container"></div>
+
+        <div id="status-panel" class="status-panel hidden">
+            <button id="close-status-panel" class="close-status" aria-label="Close status panel">×</button>
+            <div class="status-title">Data Status</div>
+            <div id="status-content"></div>
+        </div>
+
+        <!-- Employee Detail Drawer -->
+        <div id="employee-detail-panel" class="detail-panel" aria-hidden="true">
+            <button id="close-detail-panel" class="close-detail" aria-label="Close panel">×</button>
+            <div id="employee-detail-content"></div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-org-chart@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-flextree@2.1.2/build/d3-flextree.js"></script>
+    <script src="index.js"></script>
+</body>
+</html>
