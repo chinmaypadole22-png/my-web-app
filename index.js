@@ -431,6 +431,7 @@ function toggleEditMode() {
     editModeButton.setAttribute("aria-pressed", String(editMode));
     editModeLabel.textContent = editMode ? "Exit Reorder Mode" : "Reorder Mode";
     showStatus(editMode ? "Drag an employee card onto a new manager to reassign them." : "Reorder mode off.", "success");
+    if (!editMode) applyPendingUpdateIfAny();
 }
 
 function handleCardPointerDown(event) {
@@ -712,6 +713,7 @@ function closeEmployeeDetail() {
     if (!employeeDetailPanel) return;
     employeeDetailPanel.classList.remove("open");
     employeeDetailPanel.setAttribute("aria-hidden", "true");
+    applyPendingUpdateIfAny();
 }
 
 function detailRow(label, value, type = "") {
@@ -799,4 +801,50 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+}
+
+// Firebase live data — initial load + subscription
+document.addEventListener("DOMContentLoaded", initializeFromFirestore);
+
+async function initializeFromFirestore() {
+    try {
+        showStatus("Loading organization data...", "success");
+        const liveEmployees = await window.FirebaseSync.loadEmployeesFromFirestore();
+        employees = [{ ...COMPANY_ROOT }, ...DIRECTORS.map(d => ({ ...d })), ...liveEmployees];
+
+        allExpanded = false;
+        updateExpandButton();
+        populateFilters();
+        clearSearch();
+        createChart();
+        showStatus("Organization data loaded.", "success");
+
+        window.FirebaseSync.subscribeToFirestore(handleLiveUpdate);
+    } catch (error) {
+        console.error("Firestore load error:", error);
+        showStatus("Could not load live data. You can still load a file manually.", "error");
+    }
+}
+
+let pendingLiveUpdate = null;
+
+function handleLiveUpdate(liveEmployees) {
+    const updated = [{ ...COMPANY_ROOT }, ...DIRECTORS.map(d => ({ ...d })), ...liveEmployees];
+    const isBusy = editMode || employeeDetailPanel?.getAttribute("aria-hidden") === "false";
+
+    if (isBusy) {
+        pendingLiveUpdate = updated;
+        showStatus("New updates available — will apply once you finish editing.", "success");
+    } else {
+        employees = updated;
+        chart?.data(employees).render();
+    }
+}
+
+function applyPendingUpdateIfAny() {
+    if (!pendingLiveUpdate) return;
+    employees = pendingLiveUpdate;
+    pendingLiveUpdate = null;
+    chart?.data(employees).render();
+    showStatus("Updated with the latest changes.", "success");
 }
