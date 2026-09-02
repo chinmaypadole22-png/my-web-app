@@ -1,6 +1,5 @@
-// firebase-sync.js
-// Handles all communication with Firebase/Firestore for the org chart.
-// Loaded as a <script type="module"> — exposes functions on window.FirebaseSync
+// firebase-sync.js — all Firestore/Auth communication for the org chart.
+// Loaded as a <script type="module">; exposes functions on window.FirebaseSync
 // so the plain (non-module) index.js can call them.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -21,11 +20,9 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const employeesCollection = collection(db, "employees");
 
-// Converts a Firestore document into the internal employee object shape
-// used by index.js / the D3 org chart (id, parentId, name, designation, etc).
-// Manager relationships are resolved by ID (reportingTo = employee number,
-// or "ROOT-ARNAV" / "ROOT-SHRIKANT" for the two hardcoded directors) —
-// not by name-matching.
+// Converts a Firestore document into the internal employee shape used by
+// index.js / the D3 chart. Manager relationships resolve by ID (reportingTo
+// = employee number, or "ROOT-ARNAV" / "ROOT-SHRIKANT"), not by name.
 function mapDocToEmployee(docSnap) {
   const d = docSnap.data();
   return {
@@ -48,15 +45,13 @@ function mapDocToEmployee(docSnap) {
   };
 }
 
-// One-time fetch of all employees, used on initial page load.
 export async function loadEmployeesFromFirestore() {
   const snapshot = await getDocs(employeesCollection);
   return snapshot.docs.map(mapDocToEmployee);
 }
 
-// Keeps a live connection open; calls onChange(employees) whenever
-// the employees collection changes (from this tab or any other user).
-// Returns the unsubscribe function in case it's ever needed.
+// Live connection — calls onChange(employees) whenever the collection
+// changes, from this tab or any other user.
 export function subscribeToFirestore(onChange) {
   return onSnapshot(
     employeesCollection,
@@ -65,8 +60,8 @@ export function subscribeToFirestore(onChange) {
   );
 }
 
-// Admin sign-in — required because the Firestore security rule only
-// allows writes from an authenticated user (allow write: if request.auth != null).
+// Required because the Firestore rule only allows writes from an
+// authenticated user (allow write: if request.auth != null).
 export function signInAdmin(email, password) {
   return signInWithEmailAndPassword(auth, email, password);
 }
@@ -79,20 +74,16 @@ export function signOutAdmin() {
   return signOut(auth);
 }
 
-// Lets index.js react to sign-in/sign-out (e.g. to show/hide a Sign Out
-// button) without polling isSignedIn() manually.
+// Lets index.js react to sign-in/sign-out (e.g. show/hide Sign Out) without polling.
 export function watchAuthState(callback) {
   return onAuthStateChanged(auth, user => callback(!!user));
 }
 
-// Publishes the current employee list to Firestore: writes/updates every
-// employee passed in, and deletes only the specific IDs explicitly listed
-// in deletedIds (employees actually deleted during this session).
-// Deliberately does NOT delete anything merely absent from employeeList —
-// doing so would silently wipe out any employee a different user added
-// concurrently, since they wouldn't be in this session's local copy.
-// Callers should exclude the hardcoded company root + director nodes —
-// those never get written to Firestore.
+// Writes/updates every employee passed in, and deletes only the specific
+// IDs in deletedIds (employees actually deleted this session). Deliberately
+// does NOT delete anything merely absent from employeeList — that would
+// silently wipe out an employee a different user added concurrently.
+// Callers should exclude the hardcoded company root + director nodes.
 export async function publishEmployeesToFirestore(employeeList, deletedIds = []) {
   const batch = writeBatch(db);
 

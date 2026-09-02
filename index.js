@@ -850,12 +850,10 @@ function escapeHtml(value) {
 // Firebase live data — initial load + subscription
 document.addEventListener("DOMContentLoaded", initializeFromFirestore);
 
-// Merges live Firestore employees with the hardcoded company root + directors,
-// and defends against dangling manager references — e.g. if someone deletes an
-// employee's document directly in the Firebase Console (bypassing the app's
-// delete flow, which normally reassigns direct reports automatically), any
-// employee left pointing at a manager ID that no longer exists gets moved
-// under the company root instead of breaking the chart, with a warning shown.
+// Merges live Firestore employees with the hardcoded company root + directors.
+// Also defends against dangling manager references (e.g. a document deleted
+// directly in the Firebase Console) by moving orphans under the company root
+// instead of breaking the chart, with a warning shown.
 function buildFullEmployeeList(liveEmployees) {
     const base = [{ ...COMPANY_ROOT }, ...DIRECTORS.map(d => ({ ...d }))];
     const validIds = new Set([...base.map(b => b.id), ...liveEmployees.map(e => String(e.id))]);
@@ -936,10 +934,8 @@ function applyPendingUpdateIfAny() {
     showStatus("Updated with the latest changes.", "success");
 }
 
-
-// Publish (write path) — pushes the current in-memory employees to Firestore.
-// Requires admin sign-in first, since the Firestore rule only allows writes
-// from an authenticated user.
+// Publish — pushes local employees to Firestore. Requires admin sign-in,
+// since the Firestore rule only allows writes from an authenticated user.
 async function handlePublishClick() {
     if (!employees.some(e => !e.virtual) && deletedEmployeeIds.length === 0) {
         return showStatus("Nothing to publish yet.", "error");
@@ -975,11 +971,9 @@ async function runPublish() {
     }
 }
 
-// Local Undo — keeps a short history of employee-array snapshots so a
-// recent local edit (drag, delete, rename, hire/unhire, add placeholder)
-// can be reverted before it's published. Cleared whenever the baseline
-// data changes from an external source (fresh load, live sync, publish),
-// since undoing across one of those boundaries wouldn't make sense.
+// Local Undo — a short history of employee-array snapshots, reverted one
+// step at a time. Cleared whenever the baseline changes externally (fresh
+// load, live sync, publish), since undoing past that point wouldn't make sense.
 function snapshotForUndo() {
     undoStack.push({
         employees: JSON.parse(JSON.stringify(employees)),
