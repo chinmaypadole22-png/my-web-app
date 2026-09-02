@@ -890,7 +890,7 @@ async function initializeFromFirestore() {
         hasUnpublishedChanges = false;
         showStatus("Organization data loaded.", "success");
 
-        window.FirebaseSync.subscribeToFirestore(handleLiveUpdate);
+        window.FirebaseSync.subscribeToFirestore(handleLiveUpdate, handleLiveSyncError);
         window.FirebaseSync.watchAuthState(signedIn => {
             if (signOutButton) signOutButton.hidden = !signedIn;
         });
@@ -898,6 +898,10 @@ async function initializeFromFirestore() {
         console.error("Firestore load error:", error);
         showStatus("Could not load live data. You can still load a file manually.", "error");
     }
+}
+
+function handleLiveSyncError() {
+    showStatus("Live connection lost — you may be viewing outdated data. Refresh to reconnect.", "error");
 }
 
 let pendingLiveUpdate = null;
