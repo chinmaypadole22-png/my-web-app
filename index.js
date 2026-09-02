@@ -2,6 +2,9 @@
 let chart = null, employees = [], allExpanded = false;
 let currentLayout = "top"; // "top" = vertical (top-to-bottom), "left" = horizontal (left-to-right)
 let editMode = false, dragState = null, dropTargetEl = null;
+let undoStack = [];
+const MAX_UNDO_STEPS = 20;
+let hasUnpublishedChanges = false;
 
 const COMPANY_ROOT = { id: "__COMPANY_ROOT__", parentId: null, name: "Techture", designation: "", virtual: true, hidden: false, companyRoot: true };
 const DIRECTORS = [
@@ -23,6 +26,7 @@ const addPlaceholderButton = document.getElementById("add-placeholder-button");
 const exportCsvButton = document.getElementById("export-csv-button");
 const chartContainer = document.getElementById("chart-container");
 const expandCollapseButton = document.getElementById("expand-collapse-button");
+const undoButton = document.getElementById("undo-button");
 const searchInput = document.getElementById("employee-search");
 const searchResults = document.getElementById("search-results");
 const searchResultsList = document.getElementById("search-results-list");
@@ -34,6 +38,13 @@ const employeeDetailPanel = document.getElementById("employee-detail-panel");
 const employeeDetailContent = document.getElementById("employee-detail-content");
 const closeDetailPanelButton = document.getElementById("close-detail-panel");
 const closeStatusPanelButton = document.getElementById("close-status-panel");
+const publishButton = document.getElementById("publish-button");
+const signInOverlay = document.getElementById("signin-overlay");
+const signInForm = document.getElementById("signin-form");
+const signInError = document.getElementById("signin-error");
+const signInCancelButton = document.getElementById("signin-cancel");
+const signOutButton = document.getElementById("signout-button");
+let pendingSignInSuccess = null;
 
 // Event Listeners
 if (closeDetailPanelButton) closeDetailPanelButton.addEventListener("click", closeEmployeeDetail);
@@ -44,7 +55,12 @@ if (layoutToggleButton) layoutToggleButton.addEventListener("click", toggleLayou
 if (editModeButton) editModeButton.addEventListener("click", toggleEditMode);
 if (addPlaceholderButton) addPlaceholderButton.addEventListener("click", addPlaceholderNode);
 if (exportCsvButton) exportCsvButton.addEventListener("click", exportToCsv);
+if (publishButton) publishButton.addEventListener("click", handlePublishClick);
+if (signInForm) signInForm.addEventListener("submit", handleSignInSubmit);
+if (signInCancelButton) signInCancelButton.addEventListener("click", closeSignInPrompt);
+if (signOutButton) signOutButton.addEventListener("click", () => window.FirebaseSync.signOutAdmin());
 if (expandCollapseButton) expandCollapseButton.addEventListener("click", toggleAll);
+if (undoButton) undoButton.addEventListener("click", undoLastChange);
 if (clearSearchButton) clearSearchButton.addEventListener("click", clearSearch);
 
 if (chartContainer) {
@@ -244,6 +260,8 @@ async function handleExcelImport(event) {
         populateFilters();
         clearSearch();
         createChart();
+        resetUndoHistory();
+        hasUnpublishedChanges = true;
     } catch (error) {
         console.error("Excel import error:", error);
         showStatus("Import failed: " + error.message, "error");
@@ -310,11 +328,16 @@ function validateEmployees(data) {
     realEmployees.forEach(e => {
         const manager = normalizeName(e.reportingTo);
         if (!manager) return;
-        const valid = manager === normalizeName("Arnav Jain") ||
+        const nameMatch = manager === normalizeName("Arnav Jain") ||
                       manager === normalizeName("Shrikant Maniyar") ||
                       manager === normalizeName(COMPANY_ROOT.name) ||
                       realEmployees.some(c => normalizeName(c.name) === manager);
-        if (!valid) errors.push(`${e.name} → manager "${e.reportingTo}" was not found`);
+        // Live Firestore data uses IDs (e.g. "EMP002", "ROOT-ARNAV") in reportingTo
+        // rather than names — accept that scheme too.
+        const idMatch = e.reportingTo === "ROOT-ARNAV" || e.reportingTo === "ROOT-SHRIKANT" ||
+                      e.reportingTo === COMPANY_ROOT.id ||
+                      realEmployees.some(c => c.id === e.reportingTo);
+        if (!nameMatch && !idMatch) errors.push(`${e.name} → manager "${e.reportingTo}" was not found`);
     });
 
     return { totalEmployees: realEmployees.length, errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
@@ -474,7 +497,9 @@ function handleCardPointerUp(event) {
     if (moved) {
         const targetCard = cardAtPoint(event.clientX, event.clientY);
         clearDropTarget();
-        if (targetCard && reparentEmployee(employeeId, targetCard.dataset.dragId)) {
+        if (targetCard && canReparent(employeeId, targetCard.dataset.dragId)) {
+            snapshotForUndo();
+            reparentEmployee(employeeId, targetCard.dataset.dragId);
             const targetId = targetCard.dataset.dragId;
             chart.data(employees).setExpanded(targetId, true).setHighlighted(employeeId).render();
             showStatus("Reporting line updated.", "success");
@@ -585,7 +610,7 @@ function closeStatusPanel() {
 function openEmployeeDetail(data) {
     if (!employeeDetailPanel || !employeeDetailContent || !data) return;
 
-    const reportingTo = data.reportingTo || getManagerDisplayName(data.parentId) || "—";
+    const reportingTo = getManagerDisplayName(data.parentId) || data.reportingTo || "—";
 
     if (data.virtual) {
         employeeDetailContent.innerHTML = `
@@ -657,6 +682,8 @@ function saveEmployeeDetail() {
     if (!employee) return;
 
     const oldId = employee.id;
+    const oldName = employee.name;
+    snapshotForUndo();
     const fields = ["id", "name", "designation", "email", "department", "subDepartment", "location", "secondaryTitle", "dateOfJoining", "dottedLineManager"];
     fields.forEach(field => {
         const input = document.getElementById(`detail-${field}`);
@@ -665,6 +692,7 @@ function saveEmployeeDetail() {
     });
 
     if (employee.id !== oldId) employees.forEach(e => { if (e.parentId === oldId) e.parentId = employee.id; });
+    if (employee.name !== oldName) employees.forEach(e => { if (e.parentId === employee.id) e.reportingTo = employee.name; });
 
     chart.data(employees).render();
     showStatus(`${employee.name || "Employee"} updated.`, "success");
@@ -676,6 +704,7 @@ function markAsHired() {
     const employee = employees.find(e => String(e.id) === String(employeeId));
     if (!employee) return;
 
+    snapshotForUndo();
     employee.isPlaceholder = false;
     chart.data(employees).render();
     showStatus(`${employee.name || "Employee"} marked as hired.`, "success");
@@ -687,6 +716,7 @@ function unmarkAsHired() {
     const employee = employees.find(e => String(e.id) === String(employeeId));
     if (!employee) return;
 
+    snapshotForUndo();
     employee.isPlaceholder = true;
     chart.data(employees).render();
     showStatus(`${employee.name || "Employee"} reverted to a placeholder.`, "success");
@@ -701,7 +731,8 @@ function deleteEmployee() {
     const managerName = getManagerDisplayName(employee.parentId) || "the top level";
     if (!confirm(`Delete ${employee.name || "this employee"}? Their direct reports will move under ${managerName}.`)) return;
 
-    employees.forEach(e => { if (e.parentId === employee.id) e.parentId = employee.parentId; });
+    snapshotForUndo();
+    employees.forEach(e => { if (e.parentId === employee.id) { e.parentId = employee.parentId; e.reportingTo = managerName; } });
     employees = employees.filter(e => e.id !== employee.id);
 
     chart.data(employees).render();
@@ -734,8 +765,9 @@ function detailField(field, label, value, disabled = false) {
 }
 
 function addPlaceholderNode() {
-    if (!chart) return showStatus("Load a file first.", "error");
+    if (!chart) return showStatus("Chart isn't ready yet — please wait for data to load.", "error");
 
+    snapshotForUndo();
     const placeholder = {
         id: `PH-${Date.now()}`,
         parentId: COMPANY_ROOT.id,
@@ -806,20 +838,52 @@ function escapeHtml(value) {
 // Firebase live data — initial load + subscription
 document.addEventListener("DOMContentLoaded", initializeFromFirestore);
 
+// Merges live Firestore employees with the hardcoded company root + directors,
+// and defends against dangling manager references — e.g. if someone deletes an
+// employee's document directly in the Firebase Console (bypassing the app's
+// delete flow, which normally reassigns direct reports automatically), any
+// employee left pointing at a manager ID that no longer exists gets moved
+// under the company root instead of breaking the chart, with a warning shown.
+function buildFullEmployeeList(liveEmployees) {
+    const base = [{ ...COMPANY_ROOT }, ...DIRECTORS.map(d => ({ ...d }))];
+    const validIds = new Set([...base.map(b => b.id), ...liveEmployees.map(e => String(e.id))]);
+
+    let orphanCount = 0;
+    const fixed = liveEmployees.map(emp => {
+        if (emp.parentId && validIds.has(String(emp.parentId))) return emp;
+        orphanCount++;
+        return { ...emp, parentId: COMPANY_ROOT.id };
+    });
+
+    if (orphanCount > 0) {
+        showStatus(
+            `${orphanCount} employee${orphanCount > 1 ? "s" : ""} had an invalid manager reference (likely edited directly in Firestore) and ${orphanCount > 1 ? "were" : "was"} moved under Techture. Please review and reassign.`,
+            "error"
+        );
+    }
+
+    return [...base, ...fixed];
+}
+
 async function initializeFromFirestore() {
     try {
         showStatus("Loading organization data...", "success");
         const liveEmployees = await window.FirebaseSync.loadEmployeesFromFirestore();
-        employees = [{ ...COMPANY_ROOT }, ...DIRECTORS.map(d => ({ ...d })), ...liveEmployees];
+        employees = buildFullEmployeeList(liveEmployees);
 
         allExpanded = false;
         updateExpandButton();
         populateFilters();
         clearSearch();
         createChart();
+        resetUndoHistory();
+        hasUnpublishedChanges = false;
         showStatus("Organization data loaded.", "success");
 
         window.FirebaseSync.subscribeToFirestore(handleLiveUpdate);
+        window.FirebaseSync.watchAuthState(signedIn => {
+            if (signOutButton) signOutButton.hidden = !signedIn;
+        });
     } catch (error) {
         console.error("Firestore load error:", error);
         showStatus("Could not load live data. You can still load a file manually.", "error");
@@ -829,22 +893,132 @@ async function initializeFromFirestore() {
 let pendingLiveUpdate = null;
 
 function handleLiveUpdate(liveEmployees) {
-    const updated = [{ ...COMPANY_ROOT }, ...DIRECTORS.map(d => ({ ...d })), ...liveEmployees];
-    const isBusy = editMode || employeeDetailPanel?.getAttribute("aria-hidden") === "false";
+    const updated = buildFullEmployeeList(liveEmployees);
+    const isBusy = editMode ||
+        employeeDetailPanel?.getAttribute("aria-hidden") === "false" ||
+        signInOverlay?.classList.contains("open") ||
+        hasUnpublishedChanges;
 
     if (isBusy) {
         pendingLiveUpdate = updated;
         showStatus("New updates available — will apply once you finish editing.", "success");
     } else {
         employees = updated;
+        resetUndoHistory();
+        hasUnpublishedChanges = false;
         chart?.data(employees).render();
     }
 }
 
 function applyPendingUpdateIfAny() {
     if (!pendingLiveUpdate) return;
+    if (hasUnpublishedChanges) {
+        showStatus("New updates are available, but you have unpublished local changes. Publish or undo your changes to receive them.", "error");
+        return;
+    }
     employees = pendingLiveUpdate;
     pendingLiveUpdate = null;
+    resetUndoHistory();
+    hasUnpublishedChanges = false;
     chart?.data(employees).render();
     showStatus("Updated with the latest changes.", "success");
+}
+
+
+// Publish (write path) — pushes the current in-memory employees to Firestore.
+// Requires admin sign-in first, since the Firestore rule only allows writes
+// from an authenticated user.
+async function handlePublishClick() {
+    if (!employees.some(e => !e.virtual)) return showStatus("Nothing to publish yet.", "error");
+    if (!window.FirebaseSync.isSignedIn()) return openSignInPrompt(runPublish);
+    runPublish();
+}
+
+async function runPublish() {
+    const validation = validateEmployees(employees);
+    showValidationResults(validation, "current data");
+    if (validation.errors.length > 0) {
+        showStatus("Fix data errors before publishing. Review the Data Status panel.", "error");
+        return;
+    }
+
+    const publishable = employees.filter(e => !e.virtual);
+    if (!confirm(`Publish these changes for everyone to see? This will update the live org chart (${publishable.length} employees).`)) {
+        return;
+    }
+
+    try {
+        showStatus("Publishing...", "success");
+        await window.FirebaseSync.publishEmployeesToFirestore(publishable);
+        resetUndoHistory();
+        hasUnpublishedChanges = false;
+        pendingLiveUpdate = null;
+        showStatus("Published. Everyone will see these changes.", "success");
+    } catch (error) {
+        console.error("Publish error:", error);
+        showStatus("Publish failed: " + error.message, "error");
+    }
+}
+
+// Local Undo — keeps a short history of employee-array snapshots so a
+// recent local edit (drag, delete, rename, hire/unhire, add placeholder)
+// can be reverted before it's published. Cleared whenever the baseline
+// data changes from an external source (fresh load, live sync, publish),
+// since undoing across one of those boundaries wouldn't make sense.
+function snapshotForUndo() {
+    undoStack.push(JSON.parse(JSON.stringify(employees)));
+    if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+    hasUnpublishedChanges = true;
+    updateUndoButton();
+}
+
+function undoLastChange() {
+    if (!undoStack.length) return;
+    employees = undoStack.pop();
+    chart?.data(employees).render();
+    closeEmployeeDetail();
+    updateUndoButton();
+    showStatus("Reverted last change.", "success");
+}
+
+function resetUndoHistory() {
+    undoStack = [];
+    updateUndoButton();
+}
+
+function updateUndoButton() {
+    if (undoButton) undoButton.disabled = undoStack.length === 0;
+}
+
+function openSignInPrompt(onSuccess) {
+    pendingSignInSuccess = onSuccess;
+    signInError.textContent = "";
+    signInOverlay.classList.add("open");
+    signInOverlay.setAttribute("aria-hidden", "false");
+    document.getElementById("signin-email")?.focus();
+}
+
+function closeSignInPrompt() {
+    signInOverlay.classList.remove("open");
+    signInOverlay.setAttribute("aria-hidden", "true");
+    signInForm?.reset();
+    pendingSignInSuccess = null;
+    applyPendingUpdateIfAny();
+}
+
+async function handleSignInSubmit(event) {
+    event.preventDefault();
+    signInError.textContent = "";
+    const email = document.getElementById("signin-email").value.trim();
+    const password = document.getElementById("signin-password").value;
+
+    try {
+        await window.FirebaseSync.signInAdmin(email, password);
+        const onSuccess = pendingSignInSuccess;
+        closeSignInPrompt();
+        onSuccess?.();
+    } catch (error) {
+        console.error("Sign-in error:", error);
+        signInError.textContent = "Sign-in failed. Check your email and password.";
+    }
 }

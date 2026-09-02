@@ -44,7 +44,10 @@
                 <span id="edit-mode-label">Reorder Mode</span>
             </button>
             <button id="add-placeholder-button" class="toolbar-button" type="button" title="Add a placeholder 'To Hire' node">+ To Hire</button>
+            <button id="undo-button" class="toolbar-button" type="button" title="Undo the last local change" disabled>Undo</button>
             <button id="export-csv-button" class="toolbar-button" type="button">Export CSV</button>
+            <button id="publish-button" class="toolbar-button" type="button">Publish</button>
+            <button id="signout-button" class="toolbar-button" type="button" hidden>Sign Out</button>
             <button id="expand-collapse-button" class="toolbar-button" type="button">Expand All</button>
             <button id="fit-button" class="toolbar-button" type="button">Fit to Screen</button>
         </div>
@@ -63,6 +66,21 @@
         <div id="employee-detail-panel" class="detail-panel" aria-hidden="true">
             <button id="close-detail-panel" class="close-detail" aria-label="Close panel">×</button>
             <div id="employee-detail-content"></div>
+        </div>
+
+        <!-- Admin Sign-In Overlay (shown only when Publish needs auth) -->
+        <div id="signin-overlay" class="signin-overlay" aria-hidden="true">
+            <form id="signin-form" class="signin-box">
+                <h3>Admin Sign In</h3>
+                <p class="signin-subtitle">Sign in to publish changes for everyone to see.</p>
+                <input type="email" id="signin-email" placeholder="Email" autocomplete="username" required>
+                <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password" required>
+                <div id="signin-error" class="signin-error"></div>
+                <div class="signin-actions">
+                    <button type="button" id="signin-cancel" class="signin-cancel">Cancel</button>
+                    <button type="submit" class="signin-submit">Sign In</button>
+                </div>
+            </form>
         </div>
     </main>
 

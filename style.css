@@ -248,3 +248,31 @@ html, body {
     .search-wrapper { width: 140px; }
     .toolbar-button { padding: 0 8px; font-size: 10px; }
 }
+
+/* Admin Sign-In Overlay */
+.signin-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    align-items: center; justify-content: center;
+    background: rgba(17, 24, 39, 0.45); backdrop-filter: blur(2px);
+}
+.signin-overlay.open { display: flex; }
+.signin-box {
+    width: 300px; background: #ffffff; border-radius: 10px; padding: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; gap: 10px;
+}
+.signin-box h3 { margin: 0; font-size: 16px; color: #1f2937; }
+.signin-subtitle { margin: 0 0 4px; font-size: 12px; color: #6b7280; }
+.signin-box input {
+    height: 38px; padding: 0 12px; border: 1px solid #d9dde3; border-radius: 6px;
+    font-size: 13px; color: #1f2937;
+}
+.signin-box input:focus { outline: none; border-color: #6b7280; }
+.signin-error { min-height: 14px; font-size: 11px; color: #dc2626; }
+.signin-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.signin-cancel, .signin-submit {
+    height: 34px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.signin-cancel { background: #ffffff; border: 1px solid #d9dde3; color: #374151; }
+.signin-cancel:hover { background: #f5f6f8; }
+.signin-submit { background: #1f2937; border: 1px solid #1f2937; color: #ffffff; }
+.signin-submit:hover { background: #111827; }
