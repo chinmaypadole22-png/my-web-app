@@ -85,15 +85,15 @@ export function watchAuthState(callback) {
   return onAuthStateChanged(auth, user => callback(!!user));
 }
 
-// Publishes the full current employee list to Firestore: writes/updates
-// every employee passed in, and deletes any Firestore document that's no
-// longer present in the list (full-replace, not a diff/patch).
+// Publishes the current employee list to Firestore: writes/updates every
+// employee passed in, and deletes only the specific IDs explicitly listed
+// in deletedIds (employees actually deleted during this session).
+// Deliberately does NOT delete anything merely absent from employeeList —
+// doing so would silently wipe out any employee a different user added
+// concurrently, since they wouldn't be in this session's local copy.
 // Callers should exclude the hardcoded company root + director nodes —
 // those never get written to Firestore.
-export async function publishEmployeesToFirestore(employeeList) {
-  const snapshot = await getDocs(employeesCollection);
-  const existingIds = new Set(snapshot.docs.map(d => d.id));
-  const newIds = new Set(employeeList.map(e => String(e.id)));
+export async function publishEmployeesToFirestore(employeeList, deletedIds = []) {
   const batch = writeBatch(db);
 
   employeeList.forEach(emp => {
@@ -114,8 +114,9 @@ export async function publishEmployeesToFirestore(employeeList) {
     });
   });
 
-  existingIds.forEach(id => {
-    if (!newIds.has(id)) batch.delete(doc(db, "employees", id));
+  const stillPresent = new Set(employeeList.map(e => String(e.id)));
+  deletedIds.forEach(id => {
+    if (!stillPresent.has(String(id))) batch.delete(doc(db, "employees", String(id)));
   });
 
   await batch.commit();

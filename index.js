@@ -5,6 +5,7 @@ let editMode = false, dragState = null, dropTargetEl = null;
 let undoStack = [];
 const MAX_UNDO_STEPS = 20;
 let hasUnpublishedChanges = false;
+let deletedEmployeeIds = [];
 
 const COMPANY_ROOT = { id: "__COMPANY_ROOT__", parentId: null, name: "Techture", designation: "", virtual: true, hidden: false, companyRoot: true };
 const DIRECTORS = [
@@ -683,6 +684,16 @@ function saveEmployeeDetail() {
 
     const oldId = employee.id;
     const oldName = employee.name;
+
+    const idInput = document.getElementById("detail-id");
+    if (idInput && !idInput.disabled) {
+        const newId = idInput.value.trim().replace(/^#+/, "");
+        if (newId !== oldId && employees.some(e => e !== employee && String(e.id) === String(newId))) {
+            showStatus(`Employee Number "${newId}" is already in use. Choose a different one.`, "error");
+            return;
+        }
+    }
+
     snapshotForUndo();
     const fields = ["id", "name", "designation", "email", "department", "subDepartment", "location", "secondaryTitle", "dateOfJoining", "dottedLineManager"];
     fields.forEach(field => {
@@ -691,7 +702,7 @@ function saveEmployeeDetail() {
         employee[field] = field === "id" ? input.value.trim().replace(/^#+/, "") : input.value.trim();
     });
 
-    if (employee.id !== oldId) employees.forEach(e => { if (e.parentId === oldId) e.parentId = employee.id; });
+    if (employee.id !== oldId) employees.forEach(e => { if (e.parentId === oldId) { e.parentId = employee.id; e.reportingTo = employee.name; } });
     if (employee.name !== oldName) employees.forEach(e => { if (e.parentId === employee.id) e.reportingTo = employee.name; });
 
     chart.data(employees).render();
@@ -732,6 +743,7 @@ function deleteEmployee() {
     if (!confirm(`Delete ${employee.name || "this employee"}? Their direct reports will move under ${managerName}.`)) return;
 
     snapshotForUndo();
+    deletedEmployeeIds.push(String(employee.id));
     employees.forEach(e => { if (e.parentId === employee.id) { e.parentId = employee.parentId; e.reportingTo = managerName; } });
     employees = employees.filter(e => e.id !== employee.id);
 
@@ -929,7 +941,9 @@ function applyPendingUpdateIfAny() {
 // Requires admin sign-in first, since the Firestore rule only allows writes
 // from an authenticated user.
 async function handlePublishClick() {
-    if (!employees.some(e => !e.virtual)) return showStatus("Nothing to publish yet.", "error");
+    if (!employees.some(e => !e.virtual) && deletedEmployeeIds.length === 0) {
+        return showStatus("Nothing to publish yet.", "error");
+    }
     if (!window.FirebaseSync.isSignedIn()) return openSignInPrompt(runPublish);
     runPublish();
 }
@@ -943,13 +957,14 @@ async function runPublish() {
     }
 
     const publishable = employees.filter(e => !e.virtual);
-    if (!confirm(`Publish these changes for everyone to see? This will update the live org chart (${publishable.length} employees).`)) {
+    const deletionNote = deletedEmployeeIds.length > 0 ? ` (including ${deletedEmployeeIds.length} deletion${deletedEmployeeIds.length > 1 ? "s" : ""})` : "";
+    if (!confirm(`Publish these changes for everyone to see? This will update the live org chart (${publishable.length} employees${deletionNote}).`)) {
         return;
     }
 
     try {
         showStatus("Publishing...", "success");
-        await window.FirebaseSync.publishEmployeesToFirestore(publishable);
+        await window.FirebaseSync.publishEmployeesToFirestore(publishable, deletedEmployeeIds);
         resetUndoHistory();
         hasUnpublishedChanges = false;
         pendingLiveUpdate = null;
@@ -966,7 +981,10 @@ async function runPublish() {
 // data changes from an external source (fresh load, live sync, publish),
 // since undoing across one of those boundaries wouldn't make sense.
 function snapshotForUndo() {
-    undoStack.push(JSON.parse(JSON.stringify(employees)));
+    undoStack.push({
+        employees: JSON.parse(JSON.stringify(employees)),
+        deletedIds: [...deletedEmployeeIds]
+    });
     if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
     hasUnpublishedChanges = true;
     updateUndoButton();
@@ -974,7 +992,10 @@ function snapshotForUndo() {
 
 function undoLastChange() {
     if (!undoStack.length) return;
-    employees = undoStack.pop();
+    const snapshot = undoStack.pop();
+    employees = snapshot.employees;
+    deletedEmployeeIds = snapshot.deletedIds;
+    hasUnpublishedChanges = undoStack.length > 0;
     chart?.data(employees).render();
     closeEmployeeDetail();
     updateUndoButton();
@@ -983,6 +1004,7 @@ function undoLastChange() {
 
 function resetUndoHistory() {
     undoStack = [];
+    deletedEmployeeIds = [];
     updateUndoButton();
 }
 

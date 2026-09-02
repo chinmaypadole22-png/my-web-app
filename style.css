@@ -83,6 +83,9 @@ html, body {
 }
 .toolbar-button:hover { background: #f5f6f8; border-color: #c7ccd3; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05); }
 .toolbar-button:active { transform: scale(0.97); }
+.toolbar-button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.toolbar-button:disabled:hover { background: #ffffff; border-color: #d9dde3; }
+.toolbar-button[hidden] { display: none !important; }
 
 /* Layout Direction Toggle */
 #layout-toggle-button { gap: 7px; }
