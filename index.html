@@ -82,6 +82,20 @@
                 </div>
             </form>
         </div>
+
+        <!-- Conflict Preview Overlay (shown on Publish if someone else changed data since you started editing) -->
+        <div id="conflict-overlay" class="conflict-overlay" aria-hidden="true">
+            <div class="conflict-box">
+                <h3>Someone else made changes</h3>
+                <p class="conflict-subtitle">Here's what's different between your version and the latest published version. Review before publishing.</p>
+                <div id="conflict-content" class="conflict-content"></div>
+                <div class="conflict-actions">
+                    <button type="button" id="conflict-cancel" class="signin-cancel">Cancel &amp; Review</button>
+                    <button type="button" id="conflict-discard" class="conflict-discard">Discard Mine &amp; Load Latest</button>
+                    <button type="button" id="conflict-publish-anyway" class="signin-submit">Publish Mine Anyway</button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>

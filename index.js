@@ -45,6 +45,11 @@ const signInForm = document.getElementById("signin-form");
 const signInError = document.getElementById("signin-error");
 const signInCancelButton = document.getElementById("signin-cancel");
 const signOutButton = document.getElementById("signout-button");
+const conflictOverlay = document.getElementById("conflict-overlay");
+const conflictContent = document.getElementById("conflict-content");
+const conflictCancelButton = document.getElementById("conflict-cancel");
+const conflictDiscardButton = document.getElementById("conflict-discard");
+const conflictPublishAnywayButton = document.getElementById("conflict-publish-anyway");
 let pendingSignInSuccess = null;
 
 // Event Listeners
@@ -60,6 +65,9 @@ if (publishButton) publishButton.addEventListener("click", handlePublishClick);
 if (signInForm) signInForm.addEventListener("submit", handleSignInSubmit);
 if (signInCancelButton) signInCancelButton.addEventListener("click", closeSignInPrompt);
 if (signOutButton) signOutButton.addEventListener("click", () => window.FirebaseSync.signOutAdmin());
+if (conflictCancelButton) conflictCancelButton.addEventListener("click", closeConflictModal);
+if (conflictPublishAnywayButton) conflictPublishAnywayButton.addEventListener("click", () => { closeConflictModal(); runPublish(); });
+if (conflictDiscardButton) conflictDiscardButton.addEventListener("click", discardMineAndLoadLatest);
 if (expandCollapseButton) expandCollapseButton.addEventListener("click", toggleAll);
 if (undoButton) undoButton.addEventListener("click", undoLastChange);
 if (clearSearchButton) clearSearchButton.addEventListener("click", clearSearch);
@@ -833,12 +841,12 @@ function exportToCsv() {
     showStatus("Chart exported to CSV.", "success");
 }
 
-function getManagerDisplayName(parentId) {
+function getManagerDisplayName(parentId, list = employees) {
     if (!parentId) return "";
     if (parentId === "ROOT-ARNAV") return "Arnav Jain";
     if (parentId === "ROOT-SHRIKANT") return "Shrikant Maniyar";
     if (parentId === COMPANY_ROOT.id) return "Techture";
-    return employees.find(e => String(e.id) === String(parentId))?.name || "";
+    return list.find(e => String(e.id) === String(parentId))?.name || "";
 }
 
 function escapeHtml(value) {
@@ -947,8 +955,108 @@ async function handlePublishClick() {
     if (!employees.some(e => !e.virtual) && deletedEmployeeIds.length === 0) {
         return showStatus("Nothing to publish yet.", "error");
     }
-    if (!window.FirebaseSync.isSignedIn()) return openSignInPrompt(runPublish);
+    if (!window.FirebaseSync.isSignedIn()) return openSignInPrompt(publishFlow);
+    publishFlow();
+}
+
+// Checks whether the version you're about to publish conflicts with newer
+// data that arrived while you were editing (held in pendingLiveUpdate since
+// isBusy was true). If it does, shows a preview before publishing rather
+// than silently overwriting someone else's changes. If there's newer data
+// but it doesn't actually conflict with anything you touched, publishing
+// is safe and proceeds normally.
+let conflictSnapshot = null;
+
+const CONFLICT_FIELDS = [
+    { key: "name", label: "Name" },
+    { key: "designation", label: "Designation" },
+    { key: "email", label: "Email" },
+    { key: "department", label: "Department" },
+    { key: "subDepartment", label: "Sub-Department" },
+    { key: "location", label: "Location" },
+    { key: "secondaryTitle", label: "Secondary Title" },
+    { key: "dottedLineManager", label: "Dotted-Line Manager" },
+    { key: "dateOfJoining", label: "Date of Joining" },
+    { key: "parentId", label: "Reporting To", format: (v, list) => getManagerDisplayName(v, list) },
+    { key: "isPlaceholder", label: "Status", format: v => (v ? "To Hire" : "Hired") },
+];
+
+function computeConflicts(mine, theirs) {
+    const theirsById = new Map(theirs.filter(e => !e.virtual).map(e => [String(e.id), e]));
+    const edited = [];
+    const removedByOthers = [];
+
+    mine.filter(e => !e.virtual).forEach(mineEmp => {
+        const theirEmp = theirsById.get(String(mineEmp.id));
+        if (!theirEmp) {
+            removedByOthers.push(mineEmp);
+            return;
+        }
+        const changedFields = CONFLICT_FIELDS.filter(f => String(mineEmp[f.key] ?? "") !== String(theirEmp[f.key] ?? ""));
+        if (changedFields.length > 0) edited.push({ mine: mineEmp, theirs: theirEmp, changedFields });
+    });
+
+    return { edited, removedByOthers };
+}
+
+function renderConflictModal(edited, removedByOthers, mineList, theirsList) {
+    let html = "";
+    if (edited.length > 0) {
+        html += `<div class="conflict-section-title">Edited by both of you (${edited.length})</div>`;
+        edited.forEach(({ mine, theirs, changedFields }) => {
+            html += `<div class="conflict-item"><div class="conflict-item-name">${escapeHtml(mine.name || mine.id)}</div>`;
+            changedFields.forEach(f => {
+                const mineVal = f.format ? f.format(mine[f.key], mineList) : (mine[f.key] || "—");
+                const theirVal = f.format ? f.format(theirs[f.key], theirsList) : (theirs[f.key] || "—");
+                html += `<div class="conflict-field"><span class="conflict-field-label">${f.label}:</span> yours is "${escapeHtml(mineVal)}", latest is "${escapeHtml(theirVal)}"</div>`;
+            });
+            html += `</div>`;
+        });
+    }
+    if (removedByOthers.length > 0) {
+        html += `<div class="conflict-section-title">Removed by someone else (${removedByOthers.length})</div>`;
+        removedByOthers.forEach(emp => {
+            html += `<div class="conflict-item"><div class="conflict-item-name">${escapeHtml(emp.name || emp.id)}</div><div class="conflict-field">Publishing your version would bring this employee back.</div></div>`;
+        });
+    }
+    conflictContent.innerHTML = html;
+}
+
+function openConflictModal(edited, removedByOthers, mineList, theirsList) {
+    renderConflictModal(edited, removedByOthers, mineList, theirsList);
+    conflictOverlay.classList.add("open");
+    conflictOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeConflictModal() {
+    conflictOverlay.classList.remove("open");
+    conflictOverlay.setAttribute("aria-hidden", "true");
+}
+
+function publishFlow() {
+    if (pendingLiveUpdate) {
+        // Freeze what's being compared/shown right now, so the modal stays
+        // consistent even if yet another remote update arrives while it's open.
+        conflictSnapshot = pendingLiveUpdate;
+        const { edited, removedByOthers } = computeConflicts(employees, conflictSnapshot);
+        if (edited.length > 0 || removedByOthers.length > 0) {
+            openConflictModal(edited, removedByOthers, employees, conflictSnapshot);
+            return;
+        }
+    }
     runPublish();
+}
+
+function discardMineAndLoadLatest() {
+    if (!conflictSnapshot) return closeConflictModal();
+    employees = conflictSnapshot;
+    pendingLiveUpdate = null;
+    conflictSnapshot = null;
+    resetUndoHistory();
+    hasUnpublishedChanges = false;
+    chart?.data(employees).render();
+    closeConflictModal();
+    showStatus("Loaded the latest published version. Your changes were discarded.", "success");
 }
 
 async function runPublish() {

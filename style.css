@@ -279,3 +279,29 @@ html, body {
 .signin-cancel:hover { background: #f5f6f8; }
 .signin-submit { background: #1f2937; border: 1px solid #1f2937; color: #ffffff; }
 .signin-submit:hover { background: #111827; }
+
+/* Conflict Preview Overlay */
+.conflict-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    align-items: center; justify-content: center;
+    background: rgba(17, 24, 39, 0.45); backdrop-filter: blur(2px);
+}
+.conflict-overlay.open { display: flex; }
+.conflict-box {
+    width: 480px; max-width: 90vw; max-height: 80vh; background: #ffffff; border-radius: 10px; padding: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; gap: 10px;
+}
+.conflict-box h3 { margin: 0; font-size: 16px; color: #1f2937; }
+.conflict-subtitle { margin: 0 0 4px; font-size: 12px; color: #6b7280; }
+.conflict-content { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.conflict-section-title { font-size: 12px; font-weight: 600; color: #374151; margin-top: 6px; }
+.conflict-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; background: #f9fafb; }
+.conflict-item-name { font-size: 13px; font-weight: 600; color: #1f2937; margin-bottom: 4px; }
+.conflict-field { font-size: 11.5px; color: #4b5563; line-height: 1.5; }
+.conflict-field-label { font-weight: 500; color: #374151; }
+.conflict-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.conflict-discard {
+    height: 34px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;
+    background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+}
+.conflict-discard:hover { background: #fee2e2; }
