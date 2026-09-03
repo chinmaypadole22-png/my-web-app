@@ -46,7 +46,13 @@
             <button id="add-placeholder-button" class="toolbar-button" type="button" title="Add a placeholder 'To Hire' node">+ To Hire</button>
             <button id="undo-button" class="toolbar-button" type="button" title="Undo the last local change" disabled>Undo</button>
             <button id="export-csv-button" class="toolbar-button" type="button">Export CSV</button>
-            <button id="publish-button" class="toolbar-button" type="button">Publish</button>
+            <div id="publish-menu-wrapper" class="publish-menu-wrapper">
+                <button id="publish-menu-button" class="toolbar-button" type="button" aria-expanded="false" aria-haspopup="true">Publish ▾</button>
+                <div id="publish-menu-dropdown" class="publish-menu-dropdown hidden">
+                    <button type="button" id="publish-now-item" class="publish-menu-item">Publish Now</button>
+                    <button type="button" id="version-history-item" class="publish-menu-item">Version History</button>
+                </div>
+            </div>
             <button id="signout-button" class="toolbar-button" type="button" hidden>Sign Out</button>
             <button id="expand-collapse-button" class="toolbar-button" type="button">Expand All</button>
             <button id="fit-button" class="toolbar-button" type="button">Fit to Screen</button>
@@ -93,6 +99,18 @@
                     <button type="button" id="conflict-cancel" class="signin-cancel">Cancel &amp; Review</button>
                     <button type="button" id="conflict-discard" class="conflict-discard">Discard Mine &amp; Load Latest</button>
                     <button type="button" id="conflict-publish-anyway" class="signin-submit">Publish Mine Anyway</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Version History Overlay (Publish menu -> Version History) -->
+        <div id="history-overlay" class="history-overlay" aria-hidden="true">
+            <div class="history-box">
+                <h3>Version History</h3>
+                <p class="history-subtitle">Published versions from the last 30 days. Restoring loads a version locally for you to review before publishing.</p>
+                <div id="history-content" class="history-content"></div>
+                <div class="history-actions">
+                    <button type="button" id="history-close" class="signin-cancel">Close</button>
                 </div>
             </div>
         </div>
