@@ -702,7 +702,10 @@ function saveEmployeeDetail() {
         employee[field] = field === "id" ? input.value.trim().replace(/^#+/, "") : input.value.trim();
     });
 
-    if (employee.id !== oldId) employees.forEach(e => { if (e.parentId === oldId) { e.parentId = employee.id; e.reportingTo = employee.name; } });
+    if (employee.id !== oldId) {
+        employees.forEach(e => { if (e.parentId === oldId) { e.parentId = employee.id; e.reportingTo = employee.name; } });
+        deletedEmployeeIds.push(String(oldId));
+    }
     if (employee.name !== oldName) employees.forEach(e => { if (e.parentId === employee.id) e.reportingTo = employee.name; });
 
     chart.data(employees).render();
