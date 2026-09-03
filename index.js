@@ -39,7 +39,11 @@ const employeeDetailPanel = document.getElementById("employee-detail-panel");
 const employeeDetailContent = document.getElementById("employee-detail-content");
 const closeDetailPanelButton = document.getElementById("close-detail-panel");
 const closeStatusPanelButton = document.getElementById("close-status-panel");
-const publishButton = document.getElementById("publish-button");
+const publishMenuWrapper = document.getElementById("publish-menu-wrapper");
+const publishMenuButton = document.getElementById("publish-menu-button");
+const publishMenuDropdown = document.getElementById("publish-menu-dropdown");
+const publishNowItem = document.getElementById("publish-now-item");
+const versionHistoryItem = document.getElementById("version-history-item");
 const signInOverlay = document.getElementById("signin-overlay");
 const signInForm = document.getElementById("signin-form");
 const signInError = document.getElementById("signin-error");
@@ -50,6 +54,9 @@ const conflictContent = document.getElementById("conflict-content");
 const conflictCancelButton = document.getElementById("conflict-cancel");
 const conflictDiscardButton = document.getElementById("conflict-discard");
 const conflictPublishAnywayButton = document.getElementById("conflict-publish-anyway");
+const historyOverlay = document.getElementById("history-overlay");
+const historyContent = document.getElementById("history-content");
+const historyCloseButton = document.getElementById("history-close");
 let pendingSignInSuccess = null;
 
 // Event Listeners
@@ -61,7 +68,10 @@ if (layoutToggleButton) layoutToggleButton.addEventListener("click", toggleLayou
 if (editModeButton) editModeButton.addEventListener("click", toggleEditMode);
 if (addPlaceholderButton) addPlaceholderButton.addEventListener("click", addPlaceholderNode);
 if (exportCsvButton) exportCsvButton.addEventListener("click", exportToCsv);
-if (publishButton) publishButton.addEventListener("click", handlePublishClick);
+if (publishMenuButton) publishMenuButton.addEventListener("click", togglePublishMenu);
+if (publishNowItem) publishNowItem.addEventListener("click", () => { closePublishMenu(); handlePublishClick(); });
+if (versionHistoryItem) versionHistoryItem.addEventListener("click", () => { closePublishMenu(); handleVersionHistoryClick(); });
+if (historyCloseButton) historyCloseButton.addEventListener("click", closeHistoryPanel);
 if (signInForm) signInForm.addEventListener("submit", handleSignInSubmit);
 if (signInCancelButton) signInCancelButton.addEventListener("click", closeSignInPrompt);
 if (signOutButton) signOutButton.addEventListener("click", () => window.FirebaseSync.signOutAdmin());
@@ -214,6 +224,7 @@ function populateFilters() {
 
 document.addEventListener("click", event => {
     if (searchWrapper && !searchWrapper.contains(event.target)) hideSearchResults();
+    if (publishMenuWrapper && !publishMenuWrapper.contains(event.target)) closePublishMenu();
 });
 
 function focusEmployee(employeeId) {
@@ -1084,6 +1095,108 @@ async function runPublish() {
         console.error("Publish error:", error);
         showStatus("Publish failed: " + error.message, "error");
     }
+}
+
+// Publish dropdown menu (Publish Now / Version History)
+function openPublishMenu() {
+    publishMenuDropdown.classList.remove("hidden");
+    publishMenuButton.setAttribute("aria-expanded", "true");
+}
+
+function closePublishMenu() {
+    publishMenuDropdown.classList.add("hidden");
+    publishMenuButton.setAttribute("aria-expanded", "false");
+}
+
+function togglePublishMenu(event) {
+    event.stopPropagation();
+    if (publishMenuDropdown.classList.contains("hidden")) openPublishMenu();
+    else closePublishMenu();
+}
+
+// Version History — lets an admin browse the last 30 days of published
+// versions and load one locally for review before publishing it. History
+// itself is admin-only to view (same sign-in gate as Publish), consistent
+// with the write access model for the rest of the app.
+let historyEntriesById = new Map();
+
+function handleVersionHistoryClick() {
+    if (!window.FirebaseSync.isSignedIn()) return openSignInPrompt(openHistoryPanel);
+    openHistoryPanel();
+}
+
+function formatHistoryDate(date) {
+    if (!date) return "Unknown time";
+    return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+async function openHistoryPanel() {
+    historyContent.innerHTML = `<div class="history-loading">Loading version history…</div>`;
+    historyOverlay.classList.add("open");
+    historyOverlay.setAttribute("aria-hidden", "false");
+    try {
+        const entries = await window.FirebaseSync.loadPublishHistory();
+        historyEntriesById = new Map(entries.map(e => [e.id, e]));
+        renderHistoryList(entries);
+    } catch (error) {
+        console.error("History load error:", error);
+        historyContent.innerHTML = `<div class="history-loading">Couldn't load version history.</div>`;
+    }
+}
+
+function renderHistoryList(entries) {
+    if (entries.length === 0) {
+        historyContent.innerHTML = `<div class="history-loading">No published versions in the last 30 days.</div>`;
+        return;
+    }
+    historyContent.innerHTML = entries.map(entry => `
+        <div class="history-item">
+            <div class="history-item-info">
+                <div class="history-item-date">${escapeHtml(formatHistoryDate(entry.publishedAt))}</div>
+                <div class="history-item-meta">${escapeHtml(entry.publishedBy)} · ${entry.employees.length} employees</div>
+            </div>
+            <button type="button" class="history-restore-button" data-history-id="${escapeHtml(entry.id)}">Restore</button>
+        </div>
+    `).join("");
+}
+
+function closeHistoryPanel() {
+    historyOverlay.classList.remove("open");
+    historyOverlay.setAttribute("aria-hidden", "true");
+}
+
+if (historyContent) historyContent.addEventListener("click", event => {
+    const button = event.target.closest(".history-restore-button");
+    if (button) restoreVersion(button.dataset.historyId);
+});
+
+// Loads a historical version locally for review. Anyone currently live but
+// absent from that version is queued for deletion too — otherwise this
+// wouldn't be a real rollback, just old data layered back on top of new
+// data. Nothing is written to Firestore here; the normal Publish flow
+// (validation, conflict-check, confirm) handles that once you review and
+// publish, same as any other local edit.
+function restoreVersion(entryId) {
+    if (hasUnpublishedChanges) {
+        showStatus("You have unpublished changes already. Publish or undo them before restoring a different version.", "error");
+        return;
+    }
+    const entry = historyEntriesById.get(entryId);
+    if (!entry) return;
+    if (!confirm(`Load the version from ${formatHistoryDate(entry.publishedAt)}? You'll be able to review it locally before publishing.`)) {
+        return;
+    }
+
+    const currentIds = new Set(employees.filter(e => !e.virtual).map(e => String(e.id)));
+    const restoredIds = new Set(entry.employees.map(e => String(e.id)));
+    const toDelete = [...currentIds].filter(id => !restoredIds.has(id));
+
+    snapshotForUndo();
+    deletedEmployeeIds = [...new Set([...deletedEmployeeIds, ...toDelete])];
+    employees = buildFullEmployeeList(entry.employees.map(e => ({ ...e })));
+    chart?.data(employees).render();
+    closeHistoryPanel();
+    showStatus(`Loaded the version from ${formatHistoryDate(entry.publishedAt)}. Review, then use Publish to make it live.`, "success");
 }
 
 // Local Undo — a short history of employee-array snapshots, reverted one
