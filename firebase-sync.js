@@ -39,9 +39,9 @@ function historyCutoff() {
 
 // Converts the flat shape stored in Firestore back into the internal
 // employee shape used by index.js / the D3 chart. Manager relationships
-// resolve by ID (reportingTo = employee number, or "ROOT-ARNAV" /
-// "ROOT-SHRIKANT"), not by name. Shared by the live loader/listener and by
-// version-history entries, so both stay in sync with one field mapping.
+// resolve by ID (reportingTo = employee number, or the company root ID for
+// top-level directors), not by name. Shared by the live loader/listener and
+// by version-history entries, so both stay in sync with one field mapping.
 function mapDataToEmployee(id, d) {
   return {
     id,

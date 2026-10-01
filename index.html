@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Techture Organization chart</title>
+    <title>Techture Organization Chart</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -32,8 +32,8 @@
                 </div>
             </div>
 
-            <label for="excel-file" class="toolbar-button">Load File</label>
-            <input type="file" id="excel-file" accept=".xlsx,.csv" hidden>
+            <label for="excel-file" class="toolbar-button">Load Excel</label>
+            <input type="file" id="excel-file" accept=".xlsx" hidden>
 
             <button id="layout-toggle-button" class="toolbar-button" type="button" aria-pressed="false" title="Switch chart orientation">
                 <span class="layout-icon" aria-hidden="true"></span>
@@ -43,17 +43,6 @@
                 <span class="reorder-icon" aria-hidden="true"></span>
                 <span id="edit-mode-label">Reorder Mode</span>
             </button>
-            <button id="add-placeholder-button" class="toolbar-button" type="button" title="Add a placeholder 'To Hire' node">+ To Hire</button>
-            <button id="undo-button" class="toolbar-button" type="button" title="Undo the last local change" disabled>Undo</button>
-            <button id="export-csv-button" class="toolbar-button" type="button">Export CSV</button>
-            <div id="publish-menu-wrapper" class="publish-menu-wrapper">
-                <button id="publish-menu-button" class="toolbar-button" type="button" aria-expanded="false" aria-haspopup="true">Publish ▾</button>
-                <div id="publish-menu-dropdown" class="publish-menu-dropdown hidden">
-                    <button type="button" id="publish-now-item" class="publish-menu-item">Publish Now</button>
-                    <button type="button" id="version-history-item" class="publish-menu-item">Version History</button>
-                </div>
-            </div>
-            <button id="signout-button" class="toolbar-button" type="button" hidden>Sign Out</button>
             <button id="expand-collapse-button" class="toolbar-button" type="button">Expand All</button>
             <button id="fit-button" class="toolbar-button" type="button">Fit to Screen</button>
         </div>
@@ -63,7 +52,6 @@
         <div id="chart-container"></div>
 
         <div id="status-panel" class="status-panel hidden">
-            <button id="close-status-panel" class="close-status" aria-label="Close status panel">×</button>
             <div class="status-title">Data Status</div>
             <div id="status-content"></div>
         </div>
@@ -73,54 +61,12 @@
             <button id="close-detail-panel" class="close-detail" aria-label="Close panel">×</button>
             <div id="employee-detail-content"></div>
         </div>
-
-        <!-- Admin Sign-In Overlay (shown only when Publish needs auth) -->
-        <div id="signin-overlay" class="signin-overlay" aria-hidden="true">
-            <form id="signin-form" class="signin-box">
-                <h3>Admin Sign In</h3>
-                <p class="signin-subtitle">Sign in to publish changes for everyone to see.</p>
-                <input type="email" id="signin-email" placeholder="Email" autocomplete="username" required>
-                <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password" required>
-                <div id="signin-error" class="signin-error"></div>
-                <div class="signin-actions">
-                    <button type="button" id="signin-cancel" class="signin-cancel">Cancel</button>
-                    <button type="submit" class="signin-submit">Sign In</button>
-                </div>
-            </form>
-        </div>
-
-        <!-- Conflict Preview Overlay (shown on Publish if someone else changed data since you started editing) -->
-        <div id="conflict-overlay" class="conflict-overlay" aria-hidden="true">
-            <div class="conflict-box">
-                <h3>Someone else made changes</h3>
-                <p class="conflict-subtitle">Here's what's different between your version and the latest published version. Review before publishing.</p>
-                <div id="conflict-content" class="conflict-content"></div>
-                <div class="conflict-actions">
-                    <button type="button" id="conflict-cancel" class="signin-cancel">Cancel &amp; Review</button>
-                    <button type="button" id="conflict-discard" class="conflict-discard">Discard Mine &amp; Load Latest</button>
-                    <button type="button" id="conflict-publish-anyway" class="signin-submit">Publish Mine Anyway</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Version History Overlay (Publish menu -> Version History) -->
-        <div id="history-overlay" class="history-overlay" aria-hidden="true">
-            <div class="history-box">
-                <h3>Version History</h3>
-                <p class="history-subtitle">Published versions from the last 30 days. Restoring loads a version locally for you to review before publishing.</p>
-                <div id="history-content" class="history-content"></div>
-                <div class="history-actions">
-                    <button type="button" id="history-close" class="signin-cancel">Close</button>
-                </div>
-            </div>
-        </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-org-chart@3"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-flextree@2.1.2/build/d3-flextree.js"></script>
-    <script type="module" src="firebase-sync.js"></script>
     <script src="index.js"></script>
 </body>
 </html>
