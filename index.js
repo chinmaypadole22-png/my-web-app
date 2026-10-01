@@ -6,6 +6,7 @@ let undoStack = [];
 const MAX_UNDO_STEPS = 20;
 let hasUnpublishedChanges = false;
 let deletedEmployeeIds = [];
+let initialLoadComplete = false;
 
 // Only Techture itself is a hardcoded virtual node. Top-level directors are
 // no longer hardcoded by name — anyone whose "Reporting To" is blank (or,
@@ -344,16 +345,27 @@ async function handleExcelImport(event) {
         // If there are employees missing from the new file (potential
         // deletions), show a modal asking how to proceed. If nothing's
         // missing, commit directly — adding people is never destructive.
-        const comparison = compareImportAgainstCurrent(candidateEmployees);
+        //
+        // The comparison is only meaningful if Firestore has actually
+        // finished loading — otherwise employees is essentially empty,
+        // the comparison would find zero missing people regardless of
+        // what the file contains, and the modal would never appear.
+        if (initialLoadComplete && employees.some(e => !e.virtual && !e.isPlaceholder)) {
+            const comparison = compareImportAgainstCurrent(candidateEmployees);
 
-        if (comparison.missing.length > 0) {
-            pendingImport = { candidateEmployees, comparison };
-            showImportComparisonModal(comparison);
-        } else {
-            finalizeImport(candidateEmployees, []);
-            if (comparison.added.length > 0) {
-                showStatus(`${comparison.added.length} new employee${comparison.added.length > 1 ? "s" : ""} added.`, "success");
+            if (comparison.missing.length > 0) {
+                pendingImport = { candidateEmployees, comparison };
+                showImportComparisonModal(comparison);
+            } else {
+                finalizeImport(candidateEmployees, []);
+                if (comparison.added.length > 0) {
+                    showStatus(`${comparison.added.length} new employee${comparison.added.length > 1 ? "s" : ""} added.`, "success");
+                }
             }
+        } else {
+            // No meaningful baseline to compare against — first load,
+            // empty Firestore, or Firestore still loading. Just import.
+            finalizeImport(candidateEmployees, []);
         }
     } catch (error) {
         console.error("Excel import error:", error);
@@ -1418,6 +1430,7 @@ async function initializeFromFirestore() {
         clearSearch();
         createChart();
         resetUndoHistory();
+        initialLoadComplete = true;
         showStatus("Organization data loaded.", "success");
 
         window.FirebaseSync.subscribeToFirestore(handleLiveUpdate, handleLiveSyncError);
