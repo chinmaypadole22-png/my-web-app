@@ -367,6 +367,25 @@ html, body {
 .signin-submit { background: #1f2937; border: 1px solid #1f2937; color: #ffffff; }
 .signin-submit:hover { background: #111827; }
 
+/* Import Comparison Modal */
+.import-compare-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    align-items: center; justify-content: center;
+    background: rgba(17, 24, 39, 0.45); backdrop-filter: blur(2px);
+}
+.import-compare-overlay.open { display: flex; }
+.import-compare-box {
+    width: 460px; max-width: 90vw; max-height: 80vh; background: #ffffff; border-radius: 10px; padding: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; gap: 10px;
+}
+.import-compare-box h3 { margin: 0; font-size: 16px; color: #1f2937; }
+.import-compare-subtitle { margin: 0 0 4px; font-size: 12px; color: #6b7280; }
+.import-compare-content { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+.import-compare-section { margin-bottom: 6px; }
+.import-compare-section-title { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.import-compare-name { font-size: 12px; color: #4b5563; padding: 2px 0; }
+.import-compare-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
 /* To Hire Configuration Modal */
 .to-hire-overlay {
     display: none; position: fixed; inset: 0; z-index: 100;

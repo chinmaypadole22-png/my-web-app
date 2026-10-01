@@ -40,6 +40,11 @@ const toHireSubDepartmentToggle = document.getElementById("to-hire-subdepartment
 const toHireSubDepartmentSelect = document.getElementById("to-hire-subdepartment-select");
 const toHireCancelButton = document.getElementById("to-hire-cancel");
 const toHireSubmitButton = document.getElementById("to-hire-submit");
+const importCompareOverlay = document.getElementById("import-compare-overlay");
+const importCompareContent = document.getElementById("import-compare-content");
+const importCompareCancelButton = document.getElementById("import-compare-cancel");
+const importCompareMergeButton = document.getElementById("import-compare-merge");
+const importCompareReplaceButton = document.getElementById("import-compare-replace");
 const exportCsvButton = document.getElementById("export-csv-button");
 const chartContainer = document.getElementById("chart-container");
 const expandCollapseButton = document.getElementById("expand-collapse-button");
@@ -95,6 +100,9 @@ if (toHireCountToggle) toHireCountToggle.addEventListener("change", () => toHire
 if (toHireManagerToggle) toHireManagerToggle.addEventListener("change", () => toHireManagerPicker.classList.toggle("hidden", !toHireManagerToggle.checked));
 if (toHireDepartmentToggle) toHireDepartmentToggle.addEventListener("change", () => toHireDepartmentSelect.classList.toggle("hidden", !toHireDepartmentToggle.checked));
 if (toHireSubDepartmentToggle) toHireSubDepartmentToggle.addEventListener("change", () => toHireSubDepartmentSelect.classList.toggle("hidden", !toHireSubDepartmentToggle.checked));
+if (importCompareCancelButton) importCompareCancelButton.addEventListener("click", cancelImportComparison);
+if (importCompareMergeButton) importCompareMergeButton.addEventListener("click", () => commitImport("merge"));
+if (importCompareReplaceButton) importCompareReplaceButton.addEventListener("click", () => commitImport("replace"));
 if (exportCsvButton) exportCsvButton.addEventListener("click", exportToCsv);
 if (publishMenuButton) publishMenuButton.addEventListener("click", togglePublishMenu);
 if (legendButton) legendButton.addEventListener("click", toggleLegend);
@@ -303,6 +311,7 @@ function focusEmployee(employeeId) {
 async function handleExcelImport(event) {
     const file = event.target.files[0];
     if (!file) return;
+    event.target.value = ""; // allow re-uploading the same file if cancelled
 
     const isCsv = file.name.endsWith(".csv");
     if (!isCsv && !file.name.endsWith(".xlsx")) {
@@ -331,19 +340,21 @@ async function handleExcelImport(event) {
             return;
         }
 
-        // Only commit once validation has actually passed — otherwise a
-        // failed import would silently leave broken data loaded in memory
-        // even though the chart on screen still shows the old, good data,
-        // setting up a crash the next time anything else triggers a render.
-        setEmployees(candidateEmployees);
+        // Compare the validated candidate against what's currently loaded.
+        // If there are employees missing from the new file (potential
+        // deletions), show a modal asking how to proceed. If nothing's
+        // missing, commit directly — adding people is never destructive.
+        const comparison = compareImportAgainstCurrent(candidateEmployees);
 
-        allExpanded = false;
-        updateExpandButton();
-        populateFilters();
-        updateClearFilterButtonVisibility();
-        clearSearch();
-        createChart();
-        resetUndoHistory(true);
+        if (comparison.missing.length > 0) {
+            pendingImport = { candidateEmployees, comparison };
+            showImportComparisonModal(comparison);
+        } else {
+            finalizeImport(candidateEmployees, []);
+            if (comparison.added.length > 0) {
+                showStatus(`${comparison.added.length} new employee${comparison.added.length > 1 ? "s" : ""} added.`, "success");
+            }
+        }
     } catch (error) {
         console.error("Excel import error:", error);
         showStatus("Import failed: " + error.message, "error");
@@ -354,6 +365,13 @@ function validateColumns(rows) {
     const available = Object.keys(rows[0] || {});
     const missing = REQUIRED_COLUMNS.filter(col => !available.includes(col));
     if (missing.length) throw new Error("Missing required columns: " + missing.join(", "));
+}
+
+// Computes a signature for a placeholder based on the fields a user
+// actually chooses when creating one — used to match re-imported
+// placeholders back to their existing counterparts and avoid duplicates.
+function placeholderSignature(emp) {
+    return [normalizeName(emp.name), normalizeName(emp.reportingTo), normalizeName(emp.department), normalizeName(emp.subDepartment)].join("|");
 }
 
 function buildEmployeeData(rows) {
@@ -377,6 +395,33 @@ function buildEmployeeData(rows) {
         wasPlaceholder: normalizeName(row["Was Placeholder"]) === "yes"
     }));
 
+    // Blank-ID placeholders get a unique internal ID so they can be
+    // individually tracked, deleted, undone, and published without
+    // collisions. Previously they'd all share an empty string as their ID.
+    const existingPlaceholders = employees.filter(e => e.isPlaceholder && !e.virtual);
+    const sigToExisting = new Map();
+    existingPlaceholders.forEach(ep => {
+        const sig = placeholderSignature(ep);
+        if (!sigToExisting.has(sig)) sigToExisting.set(sig, []);
+        sigToExisting.get(sig).push(ep);
+    });
+
+    realEmployees.forEach(emp => {
+        if (emp.id) return; // has a real Employee Number, nothing to fix
+        if (emp.isPlaceholder) {
+            // Try to match back to an existing placeholder by signature
+            const sig = placeholderSignature(emp);
+            const candidates = sigToExisting.get(sig);
+            if (candidates && candidates.length > 0) {
+                emp.id = candidates.shift().id; // reuse existing ID, consume the match
+            } else {
+                emp.id = `PH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            }
+        } else {
+            emp.id = `PH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        }
+    });
+
     const nameLookup = new Map();
     realEmployees.forEach(emp => {
         const key = normalizeName(emp.name);
@@ -389,6 +434,115 @@ function buildEmployeeData(rows) {
     });
 
     return [...data, ...realEmployees];
+}
+
+// Import comparison — compares a validated candidate employee list against
+// what's currently loaded, identifying who's missing (potential deletion)
+// and who's new (addition). Placeholders are excluded from both sides of
+// the comparison on purpose — they're in-app constructs that will never
+// appear in any real Excel file, so comparing them would produce false
+// "missing" results on every single import.
+let pendingImport = null;
+
+function compareImportAgainstCurrent(candidateEmployees) {
+    const currentReal = employees.filter(e => !e.virtual && !e.isPlaceholder);
+    const candidateReal = candidateEmployees.filter(e => !e.virtual && !e.isPlaceholder);
+
+    const currentIds = new Map(currentReal.map(e => [String(e.id), e]));
+    const candidateIds = new Set(candidateReal.map(e => String(e.id)));
+
+    const missing = [];
+    currentIds.forEach((emp, id) => {
+        if (!candidateIds.has(id)) missing.push(emp);
+    });
+
+    const added = candidateReal.filter(e => !currentIds.has(String(e.id)));
+
+    return { missing, added };
+}
+
+function showImportComparisonModal(comparison) {
+    let html = "";
+    if (comparison.missing.length > 0) {
+        html += `<div class="import-compare-section">`;
+        html += `<div class="import-compare-section-title">Missing from new file (${comparison.missing.length})</div>`;
+        comparison.missing.forEach(emp => {
+            html += `<div class="import-compare-name">${escapeHtml(emp.name)} (#${escapeHtml(emp.id)})</div>`;
+        });
+        html += `</div>`;
+    }
+    if (comparison.added.length > 0) {
+        html += `<div class="import-compare-section">`;
+        html += `<div class="import-compare-section-title">New in file (${comparison.added.length})</div>`;
+        comparison.added.forEach(emp => {
+            html += `<div class="import-compare-name">${escapeHtml(emp.name)} (#${escapeHtml(emp.id)})</div>`;
+        });
+        html += `</div>`;
+    }
+    importCompareContent.innerHTML = html;
+    importCompareOverlay.classList.add("open");
+    importCompareOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeImportComparisonModal() {
+    importCompareOverlay.classList.remove("open");
+    importCompareOverlay.setAttribute("aria-hidden", "true");
+}
+
+function cancelImportComparison() {
+    pendingImport = null;
+    closeImportComparisonModal();
+    showStatus("Import cancelled.", "success");
+}
+
+function commitImport(mode) {
+    if (!pendingImport) return;
+    const { candidateEmployees, comparison } = pendingImport;
+    const idsToDelete = mode === "replace" ? comparison.missing.map(e => String(e.id)) : [];
+    pendingImport = null;
+    closeImportComparisonModal();
+    finalizeImport(candidateEmployees, idsToDelete);
+
+    if (mode === "replace" && comparison.missing.length > 0) {
+        showStatus(
+            `Import complete. ${comparison.missing.length} removed, ${comparison.added.length} added. Publish to make this live.`,
+            "success"
+        );
+    } else {
+        showStatus(
+            `Import complete (merge). ${comparison.added.length} new employee${comparison.added.length !== 1 ? "s" : ""} added. Publish to make this live.`,
+            "success"
+        );
+    }
+}
+
+// The single place that actually commits an import — used by both the
+// direct path (no missing employees, no modal needed) and the modal's
+// two commit buttons (Replace / Merge). Keeps existing placeholders
+// that aren't in the import file, since they're in-app constructs.
+function finalizeImport(candidateEmployees, idsToDelete) {
+    // Preserve existing placeholders — they're invisible to the
+    // comparison and should survive any import unchanged.
+    const existingPlaceholders = employees.filter(e => e.isPlaceholder && !e.virtual);
+    const candidateIds = new Set(candidateEmployees.map(e => String(e.id)));
+    const placeholdersToPreserve = existingPlaceholders.filter(e => !candidateIds.has(String(e.id)));
+
+    setEmployees([...candidateEmployees, ...placeholdersToPreserve]);
+
+    allExpanded = false;
+    updateExpandButton();
+    populateFilters();
+    updateClearFilterButtonVisibility();
+    clearSearch();
+    createChart();
+    // Reset FIRST (which clears deletedEmployeeIds along with the undo
+    // stack), THEN stage the Replace deletions — so they're written into a
+    // freshly-cleared list rather than being immediately wiped by the reset.
+    resetUndoHistory(true);
+
+    if (idsToDelete.length > 0) {
+        deletedEmployeeIds = [...new Set([...deletedEmployeeIds, ...idsToDelete])];
+    }
 }
 
 function normalizeName(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
@@ -1310,6 +1464,7 @@ function handleLiveUpdate(liveEmployees) {
     const isBusy = editMode ||
         employeeDetailPanel?.getAttribute("aria-hidden") === "false" ||
         signInOverlay?.classList.contains("open") ||
+        importCompareOverlay?.classList.contains("open") ||
         hasUnpublishedChanges;
 
     if (isBusy) {

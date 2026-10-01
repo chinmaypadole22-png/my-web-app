@@ -88,6 +88,20 @@
             <div id="employee-detail-content"></div>
         </div>
 
+        <!-- Import Comparison Modal (shown after Excel upload if data differs from what's live) -->
+        <div id="import-compare-overlay" class="import-compare-overlay" aria-hidden="true">
+            <div class="import-compare-box">
+                <h3>Data Differences Found</h3>
+                <p class="import-compare-subtitle">Your uploaded file differs from what's currently loaded. How would you like to proceed?</p>
+                <div id="import-compare-content" class="import-compare-content"></div>
+                <div class="import-compare-actions">
+                    <button type="button" id="import-compare-cancel" class="signin-cancel">Cancel</button>
+                    <button type="button" id="import-compare-merge" class="signin-submit">Merge Only</button>
+                    <button type="button" id="import-compare-replace" class="conflict-discard">Replace — Remove Missing</button>
+                </div>
+            </div>
+        </div>
+
         <!-- To Hire Configuration Modal (+ To Hire button) -->
         <div id="to-hire-overlay" class="to-hire-overlay" aria-hidden="true">
             <div class="to-hire-box">
