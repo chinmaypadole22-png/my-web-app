@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Techture Organization Chart</title>
+    <title>Techture Organization chart</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,6 +24,9 @@
                         <select id="department-filter" class="filter-select" aria-label="Filter by department">
                             <option value="">All Departments</option>
                         </select>
+                        <select id="subdepartment-filter" class="filter-select" aria-label="Filter by sub-department">
+                            <option value="">All Sub-Depts</option>
+                        </select>
                         <select id="location-filter" class="filter-select" aria-label="Filter by location">
                             <option value="">All Locations</option>
                         </select>
@@ -31,9 +34,10 @@
                     <div id="search-results-list"></div>
                 </div>
             </div>
+            <button id="clear-filter-button" class="clear-filter-button hidden" type="button">Filtered ×</button>
 
-            <label for="excel-file" class="toolbar-button">Load Excel</label>
-            <input type="file" id="excel-file" accept=".xlsx" hidden>
+            <label for="excel-file" class="toolbar-button">Load File</label>
+            <input type="file" id="excel-file" accept=".xlsx,.csv" hidden>
 
             <button id="layout-toggle-button" class="toolbar-button" type="button" aria-pressed="false" title="Switch chart orientation">
                 <span class="layout-icon" aria-hidden="true"></span>
@@ -43,7 +47,28 @@
                 <span class="reorder-icon" aria-hidden="true"></span>
                 <span id="edit-mode-label">Reorder Mode</span>
             </button>
+            <button id="add-placeholder-button" class="toolbar-button" type="button" title="Configure and add one or more 'To Hire' placeholders">+ To Hire</button>
+            <button id="undo-button" class="toolbar-button" type="button" title="Undo the last local change" disabled>Undo</button>
+            <button id="export-csv-button" class="toolbar-button" type="button">Export CSV</button>
+            <div id="publish-menu-wrapper" class="publish-menu-wrapper">
+                <button id="publish-menu-button" class="toolbar-button" type="button" aria-expanded="false" aria-haspopup="true">Publish ▾</button>
+                <div id="publish-menu-dropdown" class="publish-menu-dropdown hidden">
+                    <button type="button" id="publish-now-item" class="publish-menu-item">Publish Now</button>
+                    <button type="button" id="version-history-item" class="publish-menu-item">Version History</button>
+                </div>
+            </div>
+            <button id="signout-button" class="toolbar-button" type="button" hidden>Sign Out</button>
             <button id="expand-collapse-button" class="toolbar-button" type="button">Expand All</button>
+            <div id="legend-wrapper" class="legend-wrapper">
+                <button id="legend-button" class="toolbar-button" type="button" aria-expanded="false" aria-haspopup="true">Legend ▾</button>
+                <div id="legend-dropdown" class="legend-dropdown hidden">
+                    <div class="legend-title">Card Color by Location</div>
+                    <div class="legend-item"><span class="legend-swatch legend-swatch-nagpur"></span>Nagpur</div>
+                    <div class="legend-item"><span class="legend-swatch legend-swatch-indore"></span>Indore</div>
+                    <div class="legend-item"><span class="legend-swatch legend-swatch-noida"></span>Noida</div>
+                    <div class="legend-item"><span class="legend-swatch legend-swatch-other"></span>Other locations</div>
+                </div>
+            </div>
             <button id="fit-button" class="toolbar-button" type="button">Fit to Screen</button>
         </div>
     </header>
@@ -52,6 +77,7 @@
         <div id="chart-container"></div>
 
         <div id="status-panel" class="status-panel hidden">
+            <button id="close-status-panel" class="close-status" aria-label="Close status panel">×</button>
             <div class="status-title">Data Status</div>
             <div id="status-content"></div>
         </div>
@@ -61,12 +87,99 @@
             <button id="close-detail-panel" class="close-detail" aria-label="Close panel">×</button>
             <div id="employee-detail-content"></div>
         </div>
+
+        <!-- To Hire Configuration Modal (+ To Hire button) -->
+        <div id="to-hire-overlay" class="to-hire-overlay" aria-hidden="true">
+            <div class="to-hire-box">
+                <h3>Add To Hire</h3>
+                <p class="to-hire-subtitle">Leave anything unchecked to use the default (one placeholder, under Techture, no department).</p>
+
+                <div class="to-hire-field">
+                    <label class="to-hire-checkbox-label">
+                        <input type="checkbox" id="to-hire-count-toggle"> Number of To Hires
+                    </label>
+                    <input type="number" id="to-hire-count-input" class="to-hire-number-input hidden" min="1" max="50" value="1">
+                </div>
+
+                <div class="to-hire-field">
+                    <label class="to-hire-checkbox-label">
+                        <input type="checkbox" id="to-hire-manager-toggle"> Reporting Manager
+                    </label>
+                    <div id="to-hire-manager-picker" class="to-hire-manager-picker hidden">
+                        <input type="text" id="to-hire-manager-search" class="to-hire-text-input" placeholder="Search employee..." autocomplete="off">
+                        <div id="to-hire-manager-results" class="to-hire-manager-results hidden"></div>
+                        <div id="to-hire-manager-selected" class="to-hire-manager-selected hidden"></div>
+                    </div>
+                </div>
+
+                <div class="to-hire-field">
+                    <label class="to-hire-checkbox-label">
+                        <input type="checkbox" id="to-hire-department-toggle"> Department
+                    </label>
+                    <select id="to-hire-department-select" class="to-hire-select hidden"></select>
+                </div>
+
+                <div class="to-hire-field">
+                    <label class="to-hire-checkbox-label">
+                        <input type="checkbox" id="to-hire-subdepartment-toggle"> Sub-Department
+                    </label>
+                    <select id="to-hire-subdepartment-select" class="to-hire-select hidden"></select>
+                </div>
+
+                <div class="to-hire-actions">
+                    <button type="button" id="to-hire-cancel" class="signin-cancel">Cancel</button>
+                    <button type="button" id="to-hire-submit" class="signin-submit">Add</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Sign-In Overlay (shown only when Publish needs auth) -->
+        <div id="signin-overlay" class="signin-overlay" aria-hidden="true">
+            <form id="signin-form" class="signin-box">
+                <h3>Admin Sign In</h3>
+                <p class="signin-subtitle">Sign in to publish changes for everyone to see.</p>
+                <input type="email" id="signin-email" placeholder="Email" autocomplete="username" required>
+                <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password" required>
+                <div id="signin-error" class="signin-error"></div>
+                <div class="signin-actions">
+                    <button type="button" id="signin-cancel" class="signin-cancel">Cancel</button>
+                    <button type="submit" class="signin-submit">Sign In</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Conflict Preview Overlay (shown on Publish if someone else changed data since you started editing) -->
+        <div id="conflict-overlay" class="conflict-overlay" aria-hidden="true">
+            <div class="conflict-box">
+                <h3>Someone else made changes</h3>
+                <p class="conflict-subtitle">Here's what's different between your version and the latest published version. Review before publishing.</p>
+                <div id="conflict-content" class="conflict-content"></div>
+                <div class="conflict-actions">
+                    <button type="button" id="conflict-cancel" class="signin-cancel">Cancel &amp; Review</button>
+                    <button type="button" id="conflict-discard" class="conflict-discard">Discard Mine &amp; Load Latest</button>
+                    <button type="button" id="conflict-publish-anyway" class="signin-submit">Publish Mine Anyway</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Version History Overlay (Publish menu -> Version History) -->
+        <div id="history-overlay" class="history-overlay" aria-hidden="true">
+            <div class="history-box">
+                <h3>Version History</h3>
+                <p class="history-subtitle">Published versions from the last 30 days. Restoring loads a version locally for you to review before publishing.</p>
+                <div id="history-content" class="history-content"></div>
+                <div class="history-actions">
+                    <button type="button" id="history-close" class="signin-cancel">Close</button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-org-chart@3"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-flextree@2.1.2/build/d3-flextree.js"></script>
+    <script type="module" src="firebase-sync.js"></script>
     <script src="index.js"></script>
 </body>
 </html>
